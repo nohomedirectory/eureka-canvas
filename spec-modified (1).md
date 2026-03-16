@@ -108,7 +108,7 @@ The user starts thinking out loud about a project. Without being asked, the canv
 **P0 — Must ship (the demo depends on these):**
 1. Canvas with artifact rendering and drag support
 2. Voice session plumbing (audio capture, playback, transcript)
-3. Live API function-call loop with FunctionResponseScheduling
+3. Live API function-call loop with BLOCKING tools (FunctionResponseScheduling is upgrade path — see §5.4 and AGENTS.md Rule 3)
    - **Note:** Force-directed layout (P1 #1) is also required for the demo golden path (see strategy doc and §13.2 Shot 2). Treat it as a hard P0 dependency for demo recording even though it is categorized as P1 for MVP functionality.
 4. `create_card`, `move_artifact`, `create_calendar_event` tools
 5. Proactive Audio enabled in session config
@@ -182,7 +182,7 @@ const ai = new GoogleGenAI({ httpOptions: { apiVersion: 'v1alpha' } });
 const config = {
   responseModalities: [Modality.AUDIO],
   systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
-  tools: [{ functionDeclarations: CANVAS_TOOLS }], // See §7.2 for behavior: NON_BLOCKING on canvas tools
+  tools: [{ functionDeclarations: CANVAS_TOOLS }], // See §7.2 for tool declarations. Default: BLOCKING (omit behavior field). Upgrade: NON_BLOCKING per §5.4.
 
   // Native audio features — technical differentiators
   proactivity: { proactiveAudio: true },          // Model decides when to speak vs silently act
@@ -263,7 +263,7 @@ The Live API merges the updated instruction with the original system prompt. Pha
 3. Gemini processes audio with Proactive Audio (decides whether to respond at all based on relevance).
 4. Gemini emits audio responses (proxied to browser for playback) and/or tool calls.
 5. Cloud Run executes tool calls: writes to Firestore, calls Calendar API, or spawns research jobs.
-6. Cloud Run sends tool responses back to the Live API session with **FunctionResponseScheduling** (SILENT during active speech, WHEN_IDLE after pauses, INTERRUPT for urgent results). Each response includes the artifact ID of the created/modified object.
+6. Cloud Run sends tool responses back to the Live API session. Canvas tools use BLOCKING behavior (guaranteed silence during execution). Each response includes the artifact ID of the created/modified object. Upgrade path: NON_BLOCKING + FunctionResponseScheduling (SILENT/WHEN_IDLE) for finer audio control.
 7. Cloud Run notifies the browser of canvas state changes via the same WebSocket. New cards arrive as "ghost" state (30% opacity).
 8. Browser renders ghost cards, then solidifies them after 300ms. Force-directed layout adjusts positions.
 9. Browser records state snapshot for canvas replay.
@@ -325,13 +325,14 @@ function interruptToolResponse(toolCall, result) {
 Note: FunctionResponseScheduling applies ONLY to NON_BLOCKING tools. The Calendar and Research tools use default BLOCKING behavior — the model waits silently for their responses regardless of any scheduling parameter. If canvas tools are switched to BLOCKING as a fallback (see above), remove scheduling from their responses.
 | Tool | During speech | After pause |
 |------|--------------|-------------|
-| `create_card` | SILENT | WHEN_IDLE |
-| `move_artifact` | SILENT | WHEN_IDLE |
-| `group_artifacts` | SILENT | WHEN_IDLE |
-| `update_artifact` | SILENT | SILENT |
-| `create_calendar_event` | N/A (BLOCKING) | N/A (BLOCKING) |
-| `start_research_job` | N/A (BLOCKING) | N/A (BLOCKING) |
+| `create_card` | BLOCKING (default) — upgrade: SILENT | BLOCKING — upgrade: WHEN_IDLE |
+| `move_artifact` | BLOCKING (default) — upgrade: SILENT | BLOCKING — upgrade: WHEN_IDLE |
+| `update_artifact` | BLOCKING (default) — upgrade: SILENT | BLOCKING — upgrade: SILENT |
+| `create_calendar_event` | BLOCKING (default) | BLOCKING (default) |
+| `start_research_job` | BLOCKING (default) | BLOCKING (default) |
 | Research job completion (injected via `sendClientContent`) | N/A — not a tool response | N/A — not a tool response |
+
+**Note:** `group_artifacts` is not in the build scope (see AGENTS.md effective P0 list). The "upgrade" column shows FunctionResponseScheduling values to use if/when canvas tools are switched to `behavior: Behavior.NON_BLOCKING`.
 
 **Research job result delivery:** Research results are injected via `sendClientContent`, NOT via `sendToolResponse`. This means FunctionResponseScheduling does not apply. The model decides whether to speak after receiving the context injection based on the prompt instruction ("Announce the overall results to the user"). The `[SYSTEM]` prefix and explicit instruction to announce results makes the model reliably speak — but there is no programmatic INTERRUPT control. If you need guaranteed speech, consider wrapping the research result delivery in a dummy tool call with INTERRUPT scheduling.
 
@@ -458,8 +459,8 @@ Force simulation uses (0,0) as center. Use forceCenter(0, 0).
 ### 7.1 Design principles
 
 1. **All tool responses include artifact IDs.** The model must be able to reference any artifact it creates in subsequent calls.
-2. **Canvas tools use NON_BLOCKING behavior; action tools use blocking (default).** Canvas tools (`create_card`, `move_artifact`, `group_artifacts`, `update_artifact`) are declared NON_BLOCKING so FunctionResponseScheduling can control audio output. Action tools (`create_calendar_event`, `start_research_job`) use default blocking behavior because the model should wait for confirmation before speaking. **Fallback: if NON_BLOCKING produces persistent narration or duplicate audio during testing, switch canvas tools to BLOCKING. See §5.4 for the full fallback strategy.**
-3. **Use FunctionResponseScheduling on NON_BLOCKING tools.** SILENT for crystallization during speech, WHEN_IDLE for non-urgent confirmations, INTERRUPT for research completions.
+2. **Canvas tools default to BLOCKING behavior for reliable silence; NON_BLOCKING is the upgrade path.** Per AGENTS.md Rule 3, the initial build uses default BLOCKING behavior on all canvas tools (`create_card`, `move_artifact`, `update_artifact`). This guarantees the model cannot speak during tool execution. Action tools (`create_calendar_event`, `start_research_job`) also use default blocking behavior. **Upgrade path:** If time permits and P0 beads are done, canvas tools can be switched to `behavior: Behavior.NON_BLOCKING` to enable FunctionResponseScheduling (SILENT/WHEN_IDLE/INTERRUPT). The code samples in §7.2 show the NON_BLOCKING declarations for reference — omit the `behavior` field for BLOCKING. Note: `group_artifacts` is not being built (see AGENTS.md effective P0 list).
+3. **FunctionResponseScheduling is available as an upgrade.** When using NON_BLOCKING tools: SILENT for crystallization during speech, WHEN_IDLE for non-urgent confirmations. Research results are delivered via `sendClientContent` (not tool responses), so scheduling does not apply to them.
 4. **Prefer semantic placement over absolute coordinates.** The model should request logical placement; the frontend calculates pixel positions via force-directed layout. Coordinate system: (0,0) at viewport center.
 5. **Tool execution is server-side.** The backend validates, executes, writes to Firestore, records state snapshot for replay, and returns the result to the Live API session. **Pass result objects directly to the SDK — do NOT pre-serialize with `JSON.stringify()`.** The SDK handles serialization internally. Pre-serializing produces a double-encoded string (e.g., `"{\"status\":\"created\"}"`) instead of a structured object, which confuses the model. If you see `[object Object]` in tool responses, the issue is likely a nested non-serializable value (e.g., a Firestore Timestamp) — convert those specific fields, not the entire result.
 
@@ -531,9 +532,9 @@ Moves an artifact to a new position. Declared with `behavior: Behavior.NON_BLOCK
 }
 ```
 
-#### `group_artifacts` *(P1)*
+#### `group_artifacts` *(P1 — NOT IN BUILD SCOPE, see AGENTS.md)*
 
-Creates a visual group containing specified artifacts. Declared with `behavior: Behavior.NON_BLOCKING`.
+Creates a visual group containing specified artifacts. Documented for reference; not included in the initial build per AGENTS.md effective P0 list.
 
 **Parameters:**
 ```json
@@ -1081,12 +1082,12 @@ Each transformation is a 500ms CSS transition. Implement as a `set_canvas_view` 
 ## 12. UX principles
 
 1. **Spatial first.** Outputs become objects on the canvas, not chat messages.
-2. **Silent action during active speech.** System prompt and FunctionResponseScheduling.SILENT ensure the agent acts without speaking. The canvas update is the response.
+2. **Silent action during active speech.** BLOCKING tool behavior guarantees the model cannot speak during tool execution. The system prompt reinforces silence after responses. Upgrade path: NON_BLOCKING + FunctionResponseScheduling.SILENT for finer control.
 3. **Visible thinking.** Ghost cards show what the agent is about to create. Force-directed layout shows semantic relationships forming. Research jobs pulse with visible status. Synthesis cards reveal cross-card insights the user never stated.
 4. **Human override is instant.** Interruption stops audio and pivots immediately. The user controls the pace.
 5. **Bidirectional spatial communication.** The agent creates artifacts; the user rearranges them; the agent interprets the rearrangement and creates edges. Dragging IS communicating.
 6. **The canvas reads itself.** Topology analysis lets the agent derive emergent insight from the spatial structure it created. Tight clusters suggest shared root causes. Isolated cards suggest independent workstreams. The arrangement is itself an analytical output.
-7. **The agent evolves.** Dynamic system instruction mutation shifts behavior from aggressive creation (early) to synthesis (middle) to critical refinement (late). The agent gets smarter as the canvas matures.
+7. **The agent evolves.** The synthesis trigger at 5+ cards shifts behavior toward cross-card insights. Dynamic system instruction mutation (§5.2.1, P1) is the full upgrade path for phase-based behavioral shifts.
 8. **Beauty matters.** A minimal, focused aesthetic with clear typography, subtle animations, ghost card shimmer, and force-directed motion. Dark theme default.
 
 ---
@@ -1138,11 +1139,11 @@ Why this works: Demonstrates drag-as-communication (the second most important mo
 
 **Shot 4: Research + Calendar (1:50–2:25)**
 
-Research job completes. Agent INTERRUPTS: "Research complete. I found 3 key findings — the compliance deadline was actually extended by 2 weeks. That changes your critical path." Three result cards ghost-in near the research node, each finding its semantic place via force simulation — one clusters near the existing risk cards, another drifts toward documentation.
+Research job completes. Agent announces: "Research complete. I found 3 key findings — the compliance deadline was actually extended by 2 weeks. That changes your critical path." Three result cards ghost-in near the research node, each finding its semantic place via force simulation — one clusters near the existing risk cards, another drifts toward documentation.
 
 User: "Great. Schedule a compliance review meeting for next Tuesday at 2 PM." Agent: "Done. Calendar event created." Calendar confirmation card appears on canvas.
 
-Text overlay: "INTERRUPT scheduling • Research cascading • Google Calendar API"
+Text overlay: "Research cascading • sendClientContent injection • Google Calendar API"
 
 **Shot 5: Canvas Replay (2:25–2:55)**
 
@@ -1168,7 +1169,7 @@ Visual: Full canvas, all cards organized, semantic clusters visible, research re
 
 - [ ] Live voice interaction (user speaks, agent responds with audio)
 - [ ] Automatic artifact creation without explicit command (auto-crystallization)
-- [ ] Silent card creation during speech (system prompt + FunctionResponseScheduling.SILENT)
+- [ ] Silent card creation during speech (BLOCKING tools guarantee silence; upgrade path: FunctionResponseScheduling.SILENT)
 - [ ] Ghost cards solidifying after creation (300ms animation)
 - [ ] Force-directed layout: cards settle into semantic clusters
 - [ ] Synthesis card: agent-generated insight with dashed border, never explicitly stated by user
@@ -1177,7 +1178,7 @@ Visual: Full canvas, all cards organized, semantic clusters visible, research re
 - [ ] Spatial reference resolved from canvas context
 - [ ] Background job visibly running with pulsing animation
 - [ ] Research results as multiple cards entering force simulation (research cascading)
-- [ ] Research results announced via INTERRUPT scheduling
+- [ ] Research results announced by agent (prompted via sendClientContent injection)
 - [ ] Google Calendar event created with confirmation card
 - [ ] Canvas replay time-lapse
 - [ ] Architecture diagram with SDK features labeled

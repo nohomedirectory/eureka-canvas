@@ -17,11 +17,11 @@ A judge watching the 87th video of the day decides in the first 3 seconds: "Is t
 
 ### The "I've Never Seen This" Factor
 
-The single most predictive variable for Grand Prize wins is novelty that is VISIBLE. Not novelty buried in your architecture diagram — novelty that a judge SEES in the first 30 seconds. Ghost cards solidifying, force-directed clustering, synthesis cards with dashed borders, emotion-to-color mapping, drag-to-create-edge — these are all visible novelty. Most competitors will have invisible novelty ("we used a clever prompt chain"). You have novelty that is literally animated on screen.
+The single most predictive variable for Grand Prize wins is novelty that is VISIBLE. Not novelty buried in your architecture diagram — novelty that a judge SEES in the first 30 seconds. Ghost cards solidifying, force-directed clustering, synthesis cards with dashed borders, drag-to-create-edge — these are all visible novelty. Most competitors will have invisible novelty ("we used a clever prompt chain"). You have novelty that is literally animated on screen.
 
 ### Google's Hidden Agenda
 
-Google didn't spend money on this hackathon to see 8,000 wrapper apps. They built Proactive Audio, Affective Dialog, FunctionResponseScheduling, and thinking budgets — features most developers don't even know exist. **The Grand Prize will go to the project that makes Google's engineering investment look brilliant.** When a Google engineer on the judging panel sees you using `FunctionResponseScheduling.SILENT` on `NON_BLOCKING` tools with Proactive Audio as a fallback layer, they think: "Someone actually READ our documentation and built something we envisioned."
+Google didn't spend money on this hackathon to see 8,000 wrapper apps. They built Proactive Audio, FunctionResponseScheduling, and thinking budgets — features most developers don't even know exist. **The Grand Prize will go to the project that makes Google's engineering investment look brilliant.** When a Google engineer on the judging panel sees you using `FunctionResponseScheduling.SILENT` on `NON_BLOCKING` tools with Proactive Audio as a fallback layer, they think: "Someone actually READ our documentation and built something we envisioned."
 
 ### The Competition Topology
 
@@ -89,9 +89,9 @@ Make it VISIBLE. Text overlays. Architecture diagram. README session config. Eve
 
 | Criterion | Weight | Projected Score | Rationale |
 |-----------|--------|-----------------|-----------|
-| Innovation & Multimodal UX | 40% | 5.0 | Canvas paradigm + silent crystallization + Affective Dialog + force layout + ghost cards + synthesis cards + topology analysis + bidirectional spatial communication + replay with emotion gradient. No competitor will match this feature density. |
-| Technical Implementation | 30% | 4.8 | Deep SDK usage (Proactive Audio, Affective Dialog, FunctionResponseScheduling, NON_BLOCKING, thinking budget, dynamic system instruction). Server-proxy. Firestore. Session resumption. Search grounding. Research cascading. The only deduction risk is if a feature misbehaves. |
-| Demo & Presentation | 30% | 5.0 | Segment-recorded, scripted, thesis-driven. Canvas replay closer with emotion gradient. Architecture diagram. Cloud proof. |
+| Innovation & Multimodal UX | 40% | 5.0 | Canvas paradigm + silent crystallization + force layout + ghost cards + synthesis cards + topology analysis + bidirectional spatial communication + canvas replay. No competitor will match this feature density. |
+| Technical Implementation | 30% | 4.8 | Deep SDK usage (Proactive Audio, FunctionResponseScheduling, thinking budget, session resumption, context window compression). Server-proxy. Firestore. Search grounding. Research cascading. The only deduction risk is if a feature misbehaves. |
+| Demo & Presentation | 30% | 5.0 | Segment-recorded, scripted, thesis-driven. Canvas replay closer. Architecture diagram. Cloud proof. |
 
 **Base score: 4.94 / 5.0**
 

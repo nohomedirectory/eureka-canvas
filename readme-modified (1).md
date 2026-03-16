@@ -33,16 +33,18 @@ Powered by Gemini's native **Proactive Audio** capability, the model can proacti
 **Note:** Proactive Audio may suppress tool calls (not just audio) for speech it classifies as irrelevant. Silent crystallization is designed to work without Proactive Audio via the system prompt and FunctionResponseScheduling. If Proactive Audio interferes with tool calls, it can be disabled with one config change.
 
 ### FunctionResponseScheduling — silent, idle, or interrupt
-Canvas tools are declared as `NON_BLOCKING`, which enables explicit **FunctionResponseScheduling** on their responses. Note: NON_BLOCKING tools have a known behavior where the model may generate speculative audio in parallel with tool execution. The scheduling parameter mitigates but may not fully prevent this. The system prompt's "never narrate tool calls" instruction provides an additional safeguard.
+The Gemini Live API supports **FunctionResponseScheduling** on `NON_BLOCKING` tools, enabling programmatic control over when the model generates audio after tool execution:
 - **SILENT**: Cards appear without any audio (during active speech)
 - **WHEN_IDLE**: Agent comments after the user pauses (for confirmations)
-- **INTERRUPT**: Agent speaks immediately (for completed research)
+- **INTERRUPT**: Agent speaks immediately (for urgent results)
+
+**Implementation note:** The initial build uses default BLOCKING tool behavior for canvas tools, which provides guaranteed silence during tool execution (the model cannot speak while a blocking tool runs). The system prompt reinforces silence after tool responses. If time permits, an upgrade path to NON_BLOCKING + SILENT is documented in the spec (§5.4) for finer-grained scheduling control. The README documents the full architecture including NON_BLOCKING capabilities to demonstrate SDK knowledge.
 
 ### Live voice interaction
 Real-time bidirectional voice powered by the Gemini Live API with native audio. Interruptible responses for natural collaboration. Text input fallback with live transcription of both user and agent speech. 700ms silence tolerance for thinking-aloud patterns.
 
 ### Screen-aware spatial intelligence
-The agent receives structured canvas state and on-demand visual snapshots of the workspace. Spatial references like "move that cluster" or "turn those notes into a graph" are resolved from the current visible layout. When you manually drag a card near another card, the agent interprets it as a relationship signal and creates a dependency edge — no voice command needed. Dragging IS communicating.
+The agent receives structured canvas state injected via `sendClientContent`. Spatial references like "move that cluster" or "turn those notes into a graph" are resolved from the current visible layout. When you manually drag a card near another card, the agent interprets it as a relationship signal and creates a dependency edge — no voice command needed. Dragging IS communicating.
 
 ### Force-directed semantic layout
 Cards don't just appear at fixed coordinates — they settle into clusters based on semantic relationships using a **force-directed physics simulation**. Related cards attract each other, unrelated cards repel. Groups create gravitational wells. The canvas organizes itself like a living organism. When the agent creates 5 cards, they *find their place* through physics.
@@ -57,7 +59,7 @@ After 5+ cards exist, the agent looks for non-obvious connections spanning multi
 New cards arrive as translucent ghost previews (30% opacity with a subtle shimmer). After 300ms, they solidify into full cards. This creation animation makes the agent's work feel deliberate and visible — you can see the canvas being built in real time rather than cards snapping into existence.
 
 ### Background research
-Launch research tasks that run asynchronously with **Google Search grounding** while you keep working. The job status is visible on the canvas with a pulsing animation. Results return as structured artifact cards with key findings, announced via INTERRUPT scheduling.
+Launch research tasks that run asynchronously with **Google Search grounding** while you keep working. The job status is visible on the canvas with a pulsing animation. Results are injected into the Live API session via `sendClientContent`, and the agent announces findings and creates individual result cards that enter the force simulation (research cascading).
 
 ### Google Calendar integration
 Turn plans into action. Ask the agent to schedule a meeting, and it creates a Google Calendar event directly from the workspace. A confirmation card appears on the canvas.
@@ -109,9 +111,9 @@ Workspace state is saved to Firestore. Refresh the page or return later and pick
 │  │ Live API     │  │ Tool         │  │ Research  │ │
 │  │ Session Mgr  │  │ Executor     │  │ Runner    │ │
 │  │              │  │              │  │           │ │
-│  │ • Proactive  │  │ • SILENT     │  │ • Google  │ │
-│  │   Audio      │◄─┤ • WHEN_IDLE  │  │   Search  │ │
-│  │ • Thinking   │  │ • INTERRUPT  │  │   ground. │ │
+│  │ • Proactive  │  │ • BLOCKING   │  │ • Google  │ │
+│  │   Audio      │◄─┤   (default)  │  │   Search  │ │
+│  │ • Thinking   │  │ • Validated  │  │   ground. │ │
 │  │   budget     │  │              │  │           │ │
 │  │ • Session    │  │ • Canvas     │  │ • Async   │ │
 │  │   resumption │  │   state inj. │  │   inject  │ │
@@ -128,17 +130,17 @@ Workspace state is saved to Firestore. Refresh the page or return later and pick
                        • Snapshots
 ```
 
-**Architecture:** Server-proxy. The backend manages the Gemini Live API WebSocket session, executes tool calls server-side with FunctionResponseScheduling, and proxies audio between browser and API. This minimizes tool-call latency (critical when creating multiple artifacts per interaction: ~100-200ms server-side vs ~300-500ms client-direct) and keeps OAuth tokens server-side.
+**Architecture:** Server-proxy. The backend manages the Gemini Live API WebSocket session, executes tool calls server-side, and proxies audio between browser and API. This minimizes tool-call latency (critical when creating multiple artifacts per interaction: ~100-200ms server-side vs ~300-500ms client-direct) and keeps OAuth tokens server-side.
 
 ### Core design principles
 
-1. **The canvas is the primary shared context.** The agent's understanding of the workspace is grounded in structured state plus on-demand visual snapshots.
+1. **The canvas is the primary shared context.** The agent's understanding of the workspace is grounded in structured canvas state injected via `sendClientContent`.
 2. **The model never mutates state directly.** It invokes validated tools. Every tool response includes artifact IDs for future reference.
-3. **The model's speech is controlled by reinforcing mechanisms.** System prompt instructs silent crystallization and forbids narrating tool calls. FunctionResponseScheduling on NON_BLOCKING canvas tools provides programmatic control over audio generation after tool execution. Proactive Audio (when enabled) adds model-level judgment about when to speak. These mechanisms reinforce each other but have individual reliability limitations — test to determine which combination works best during recording.
+3. **The model's speech is controlled by reinforcing mechanisms.** System prompt instructs silent crystallization and forbids narrating tool calls. Canvas tools default to BLOCKING behavior, which guarantees silence during tool execution. Proactive Audio (when enabled) adds model-level judgment about when to speak. The architecture supports upgrading to NON_BLOCKING + FunctionResponseScheduling for finer-grained control (see spec §5.4).
 4. **The canvas reads itself.** After force-directed layout settles, topology analysis computes cluster density and isolation. The agent derives emergent insight from the spatial structure it created — tight clusters suggest shared root causes, isolated cards suggest independent workstreams.
 5. **The agent thinks, not just transcribes.** Synthesis cards contain cross-card insights the user never explicitly stated. The agent creates structure from speech, then reads that structure for meaning that wasn't in any single card.
 6. **The canvas communicates bidirectionally.** The agent creates artifacts; the user rearranges them; the agent interprets the rearrangement and creates edges. Dragging two cards together is a spatial command.
-7. **The agent evolves.** Dynamic system instruction mutation shifts behavior from aggressive creation (early canvas) to synthesis (middle) to critical refinement (mature canvas).
+7. **The agent evolves.** The system prompt supports phase-based behavioral shifts from aggressive creation (early canvas) to synthesis (middle) to critical refinement (mature canvas). The synthesis trigger at 5+ cards injects context that shifts agent behavior.
 8. **Background work is visible.** Long-running tasks are represented as first-class objects on the canvas with pulsing status indicators. Research results cascade as individual cards that find their semantic place.
 9. **External actions are narrow and explicit.** Google Calendar is the single external integration surface.
 10. **The canvas remembers.** State snapshots enable replay — the thinking process is watchable.
@@ -156,11 +158,11 @@ const config = {
   systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
   tools: [{
     functionDeclarations: [
-      // Canvas tools: NON_BLOCKING enables FunctionResponseScheduling (SILENT/WHEN_IDLE/INTERRUPT)
-      { name: 'create_card',    behavior: Behavior.NON_BLOCKING, /* ... */ },
-      { name: 'move_artifact',  behavior: Behavior.NON_BLOCKING, /* ... */ },
-      { name: 'update_artifact', behavior: Behavior.NON_BLOCKING, /* ... */ },
-      { name: 'group_artifacts', behavior: Behavior.NON_BLOCKING, /* ... */ },
+      // Canvas tools: default BLOCKING behavior guarantees silence during execution.
+      // Upgrade path: add behavior: Behavior.NON_BLOCKING for FunctionResponseScheduling control (see spec §5.4).
+      { name: 'create_card',    /* ... */ },
+      { name: 'move_artifact',  /* ... */ },
+      { name: 'update_artifact', /* ... */ },
       // Action tools: blocking (default) — model waits for confirmation
       { name: 'create_calendar_event', /* ... */ },
       { name: 'start_research_job',    /* ... */ },
@@ -294,10 +296,11 @@ gcloud run deploy eureka-canvas \
 │   ├── JobNode.tsx         # Background job status display with pulsing animation
 │   ├── CanvasReplay.tsx    # Timeline scrubber for state snapshot replay
 │   ├── TranscriptPanel.tsx # Live speech transcript
-│   └── Controls.tsx        # Mic, text input, theme toggle
+│   └── Controls.tsx        # Mic, text input
 ├── lib/
-│   ├── live/               # Gemini Live API session management (Proactive Audio, scheduling)
-│   ├── tools/              # Tool handlers with FunctionResponseScheduling (canvas, calendar, jobs)
+│   ├── live/               # Gemini Live API session management (Proactive Audio, session resumption)
+│   ├── audio/              # AudioWorklet capture processor and playback utilities
+│   ├── tools/              # Tool handlers (canvas, calendar, research jobs)
 │   ├── layout/             # Force-directed semantic layout engine (d3-force)
 │   ├── replay/             # Canvas state snapshot recording and playback
 │   ├── firestore/          # Workspace persistence + snapshot storage
@@ -316,7 +319,7 @@ The demo video (3:30) shows the following sequence:
 1. **Problem framing** (0:00–0:12) — "What if AI didn't just talk to you — but thought alongside you?" Cut to: "Every AI today is a text box. We built something different."
 2. **Conversation crystallization** (0:12–1:15) — The user describes a project. Ghost cards appear and solidify automatically, organized by force-directed semantic clustering. A synthesis card appears with a dashed border — an insight spanning multiple cards that the user never stated. The agent stays silent during speech (system prompt + FunctionResponseScheduling). After a pause, the agent speaks one topology-aware observation.
 3. **Bidirectional spatial communication** (1:15–1:50) — The user silently drags two cards together. Without any voice command, the agent interprets the spatial intent and creates a dependency edge. Then the user makes a spatial reference, and the agent acts on the visible layout. The user interrupts mid-response. The agent pivots instantly: "Got it."
-4. **Background research** (1:50–2:25) — A research job runs visibly with Google Search grounding while the user keeps working. Results are announced via INTERRUPT scheduling. Individual finding cards ghost-in and find their semantic place via force simulation (research cascading).
+4. **Background research** (1:50–2:25) — A research job runs visibly with Google Search grounding while the user keeps working. Results are injected via `sendClientContent` and the agent announces findings. Individual finding cards ghost-in and find their semantic place via force simulation (research cascading).
 5. **Calendar action** (2:25–2:55) — The user asks to schedule a meeting. A Google Calendar event is created. Then: canvas replay — a 10-second time-lapse showing the canvas evolving from empty to fully organized.
 6. **Architecture proof** (2:55–3:20) — Brief view of the system architecture (server-proxy, three speech control layers, all SDK features labeled) and Cloud Run deployment.
 7. **Close** (3:20–3:30) — "Eureka Canvas. The text box is dead. This is what comes after."
@@ -331,7 +334,7 @@ The demo video (3:30) shows the following sequence:
 - Canvas performance is optimized for up to ~50 artifacts. Force-directed layout adds minimal overhead but freezes after 2 seconds of settling.
 - Synthesis cards rely on the model's reasoning quality. The system prompt instructs the agent to create synthesis cards only when genuine cross-card insights exist, but the quality of synthesis depends on the thinking budget and the complexity of the canvas state.
 - Topology analysis is computed after force layout settles. If the layout doesn't settle cleanly (e.g., jitter from closely spaced cards), topology insights may be imprecise. The 2-second layout freeze mitigates this.
-- Dynamic system instruction mutation uses `sendClientContent` with `role: "system"` to update behavior at canvas thresholds. The Live API merges these with the original system prompt; in rare cases the model may not fully adopt the new behavioral phase. Note: this feature is primarily documented for Vertex AI — verify it works with the Gemini Developer API during testing.
+- The synthesis trigger at 5+ cards injects context via `sendClientContent` to shift agent behavior toward cross-card insights. Full dynamic system instruction mutation (phase-based prompt updates at multiple thresholds) is an upgrade path documented in the spec (§5.2.1) but not in the initial build.
 - Canvas replay stores snapshots in memory and Firestore — large sessions may require pruning.
 - If the Live API WebSocket fails to connect (e.g., during high load), a connection status indicator shows the current state. The demo video serves as a fallback for judges if the live deployment is temporarily unavailable.
 
@@ -347,7 +350,7 @@ The demo video (3:30) shows the following sequence:
 
 **Artifacts not appearing:** Check the browser console for tool call errors. Ensure the backend is reachable and Firestore is enabled. If Proactive Audio is enabled and the agent isn't creating cards during thinking-aloud, it may be classifying the speech as irrelevant — try disabling Proactive Audio.
 
-**Agent narrates every card creation:** This is a known behavior with NON_BLOCKING tools — the model may generate speculative audio in parallel with tool execution regardless of SILENT scheduling. First, verify canvas function declarations include `behavior: Behavior.NON_BLOCKING` and that `apiVersion: 'v1alpha'` is set on the client. If SILENT scheduling does not suppress narration, try switching canvas tools to default BLOCKING behavior — this forces the model to wait silently during tool execution. Additionally, strengthen the system prompt with explicit instructions: "ABSOLUTELY NEVER describe, acknowledge, or narrate tool calls."
+**Agent narrates every card creation:** Canvas tools use default BLOCKING behavior, which guarantees the model cannot speak during tool execution. If narration occurs after tool responses, strengthen the system prompt with explicit instructions: "ABSOLUTELY NEVER describe, acknowledge, or narrate tool calls." If upgrading to NON_BLOCKING + FunctionResponseScheduling.SILENT (see spec §5.4), be aware the model may generate speculative audio in parallel with tool execution — BLOCKING is the more reliable approach.
 
 **Cards jittering:** Force-directed layout may oscillate with certain card configurations. Increase `alphaDecay` in the d3-force simulation to settle faster, or freeze layout after 2 seconds.
 

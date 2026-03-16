@@ -25,7 +25,7 @@ STEP 3: Create beads from manifest below (YOU + CLAUDE CODE, 20-30 min)
   ├── Use `br add` for each bead in Part 2 below
   ├── Or: feed the bead manifest to Claude Code and have it batch-create via `br`
   ├── Depends on: STEP 2
-  └── Output: ~55 beads in bv with dependency edges
+  └── Output: 37 beads in bv with dependency edges
 
 STEP 4: Validate bead DAG (YOU, 5 min)
   ├── `bv --robot-triage` — verify no orphan beads, no cycles
@@ -36,13 +36,17 @@ STEP 4: Validate bead DAG (YOU, 5 min)
 
 STEP 5: GCP setup (YOU, 15 min — can overlap with STEP 3)
   ├── Create or select Google Cloud project
-  ├── Enable APIs: Cloud Run, Firestore, Google Calendar
+  ├── Enable APIs: Cloud Run, Firestore API, Google Calendar API
+  ├── Create Firestore database (native mode) in the project
   ├── Get Gemini API key from Google AI Studio
+  ├── VERIFY model name resolves: test with a quick API call to gemini-2.5-flash-native-audio-preview-12-2025
   ├── Create OAuth 2.0 credentials for Calendar
   ├── Authorize test Google account, store refresh token
-  ├── Create .env.local with real credentials
+  ├── Create .env.local with ALL env vars from README §Environment variables:
+  │   GEMINI_API_KEY, GEMINI_MODEL, GOOGLE_CLOUD_PROJECT, FIRESTORE_DATABASE_ID,
+  │   GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI, NEXT_PUBLIC_APP_URL
   ├── Depends on: STEP 2
-  └── Output: working credentials in .env.local
+  └── Output: working credentials in .env.local, verified API key + model name
 
 STEP 6: GDG signup (YOU, 3 min — can overlap with anything)
   ├── https://gdg.community.dev/ → create profile
@@ -684,7 +688,7 @@ Every bead needed to build, demo, and submit Eureka Canvas. Feed these to `br ad
 #### DM-1: Record Demo Video
 
 **Labels:** demo, human-only
-**Depends on:** IN-6, DY-1, DL-1 (everything working + deployed + architecture diagram)
+**Depends on:** IN-1, DY-1, DL-1 (minimum: core loop working + deployed + architecture diagram; IN-6 replay is ideal but not blocking)
 **Description:** Record demo per spec §13.2 shot-by-shot script.
 - Record each of 7 shots separately, 3 takes each
 - Splice best takes with clean cuts
@@ -712,7 +716,7 @@ Every bead needed to build, demo, and submit Eureka Canvas. Feed these to `br ad
 #### DM-3: Submit to Devpost
 
 **Labels:** submission, human-only
-**Depends on:** DM-1, DM-2, DL-2, DL-3
+**Depends on:** DM-1, DM-2, DL-1, DL-2, DL-3
 **Description:** Complete and submit the Devpost entry.
 - Select category: Live Agents
 - Text description (DL-3)
@@ -853,7 +857,7 @@ br add \
 
 > "Read the bead manifest in this file. For each bead, run `br add` with the title, a concise description referencing the spec section, the labels, and the depends-on edges. Use the bead IDs (SC-1, AU-1, etc.) as the bead identifiers."
 
-This is the fastest path — a single Claude Code agent can create all ~55 beads in 5-10 minutes.
+This is the fastest path — a single Claude Code agent can create all 37 beads in 5-10 minutes.
 
 ---
 
